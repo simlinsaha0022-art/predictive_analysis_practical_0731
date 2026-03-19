@@ -1,0 +1,370 @@
+---
+title: "Assignment_7_731"
+author: "Simlin Saha"
+date: "2026-03-19"
+output: word_document
+---
+
+### Problem set 6: Model Selection
+
+To demonstrate the application of subset selection methods
+
+Consider the “Hitters” data. For loading the data you need to install ISLR
+library. We wish to predict a baseball player’s salary on the basis of various
+predictors. So first we need to choose an optimal model.
+
+```{r}
+#install.packages("leaps")
+library(ISLR)
+library(leaps)
+```
+
+```{r}
+set.seed(123)
+```
+
+```{r}
+head(Hitters)
+```
+
+#### 1. Clean the data by removing all rows that have missing value in any variable. You will be working with this clean data.
+
+```{r}
+hitter_clean = na.omit(Hitters)
+head(hitter_clean)
+```
+
+#### 2. Split the data randomly into train-test keeping 80% as training sample and remaining as test sample.
+
+```{r}
+train = sample(1:nrow(hitter_clean), 0.8*nrow(hitter_clean))
+train
+```
+```{r}
+train_data = hitter_clean[train, ]
+test_data = hitter_clean[-train, ]
+```
+
+```{r}
+head(train_data)
+head(test_data)
+```
+#### 3. Perform the best subset selection on the training sample. While choosing the best model fit up to a 19 variable model. Choose the best model according to adjusted R squared and Cp values. In case the best model differs according to the selection criteria, report the best fitted model according to each selection criterion.
+
+```{r}
+reg1 = regsubsets(Salary ~ ., data = train_data, nvmax = 19)
+summary(reg1)
+```
+```{r}
+reg1_sum = summary(reg1)
+
+adjr2_best = which.max(reg1_sum$adjr2)
+cp_best    = which.min(reg1_sum$cp)
+
+adjr2_best
+cp_best
+```
+
+###### Prediction Function
+```{r}
+predict_regsubsets = function(object, newdata, id){
+  form = as.formula(object$call[[2]])
+  mat = model.matrix(form, newdata)
+  coefi = coef(object, id = id)
+  vars = names(coefi)
+  mat[, vars] %*% coefi
+}
+```
+
+###### MSE Function
+```{r}
+mse = function(y, yhat){
+  mean((y - yhat)^2)
+}
+```
+
+#### 4. Find the training MSE and test MSE for each of the best models selected according to different criterion as mentioned in 3 and compare their values.
+
+```{r}
+# AdjR2 model
+train_pred_adjr2 = predict_regsubsets(reg1, train_data, adjr2_best)
+test_pred_adjr2  = predict_regsubsets(reg1, test_data, adjr2_best)
+
+# Cp model
+train_pred_cp = predict_regsubsets(reg1, train_data, cp_best)
+test_pred_cp  = predict_regsubsets(reg1, test_data, cp_best)
+
+data.frame(
+  Model = c("AdjR2","Cp"),
+  Train_MSE = c(
+    mse(train_data$Salary, train_pred_adjr2),
+    mse(train_data$Salary, train_pred_cp)
+  ),
+  Test_MSE = c(
+    mse(test_data$Salary, test_pred_adjr2),
+    mse(test_data$Salary, test_pred_cp)
+  )
+)
+```
+#### 5. Repeat 3-4 using forward stepwise selection method.
+
+#### FORWARD STEPWISE SELECTION
+
+```{r}
+reg2 = regsubsets(Salary ~ ., data = train_data, nvmax = 19, method = 'forward')
+summary(reg2)
+```
+###### Selecting Best Model
+```{r}
+reg2_sum = summary(reg2)
+
+adjr2_f = which.max(reg2_sum$adjr2)
+cp_f    = which.min(reg2_sum$cp)
+
+adjr2_f
+cp_f
+```
+
+###### MSE for Forward
+
+```{r}
+train_pred_f = predict_regsubsets(reg2, train_data, adjr2_f)
+test_pred_f  = predict_regsubsets(reg2, test_data, adjr2_f)
+
+data.frame(
+  Method = "Forward",
+  Train_MSE = mse(train_data$Salary, train_pred_f),
+  Test_MSE = mse(test_data$Salary, test_pred_f)
+)
+```
+#### 6. Repeat 3-4 using backward stepwise selection method.
+
+#### BACKWARD STEPWISE SELECTION
+
+```{r}
+reg3 = regsubsets(Salary ~ ., data = train_data, nvmax = 19, method = "backward")
+summary(reg3)
+```
+
+###### Select Best Model
+```{r}
+reg3_sum = summary(reg3)
+
+adjr2_b = which.max(reg3_sum$adjr2)
+cp_b    = which.min(reg3_sum$cp)
+
+adjr2_b
+cp_b
+```
+
+###### MSE for Backward
+```{r}
+train_pred_b = predict_regsubsets(reg3, train_data, adjr2_b)
+test_pred_b  = predict_regsubsets(reg3, test_data, adjr2_b)
+
+data.frame(
+  Method = "Backward",
+  Train_MSE = mse(train_data$Salary, train_pred_b),
+  Test_MSE = mse(test_data$Salary, test_pred_b)
+)
+```
+### 7. Compare the results of the three methods in terms of choice of best model, train MSE amd test MSE.
+
+#### Comparison of Train MSE
+
+Forward Selection: 88287.08 (lowest)
+
+Backward Selection: 88865.02
+
+Best Subset (AdjR²): 88935.80
+
+Best Subset (Cp): 89790.63 (highest)
+
+Therefore, Forward selection gives the lowest training MSE, meaning it fits the training data slightly better than the others.
+
+#### Comparison of Test MSE
+
+Best Subset (Cp): 125652.3 (lowest)
+
+Best Subset (AdjR²): 130066.9
+
+Forward Selection: 134001.7
+
+Backward Selection: 134736.7 (highest)
+
+Therefore, The Best Subset model (Cp criterion) gives the lowest test MSE, so it performs best on unseen data.
+
+#### Interpretation
+
+Although forward selection has the lowest training MSE, its test MSE is higher → indicates slight overfitting.
+
+Backward selection performs similarly to forward but slightly worse.
+
+Best subset selection, especially using Cp, provides the best balance between bias and variance.
+
+#### Final Conclusion
+
+The best model overall is the Best Subset Selection model chosen using Cp, because it has the lowest test MSE.
+
+This shows that:
+
+Evaluating all possible models (best subset) can lead to better generalization.
+
+Stepwise methods (forward/backward) are faster but may not always give the optimal model.
+
+### Problem Set 7: Shrinkage Methods
+
+We would be working with the Hitters dataset available in the ISLR library. We have to predict the Salary based on all available variables. First, we make sure that we delete all rows with one or more missing values.
+
+#### 1. We split the data set into a training set and a test set randomly, keeping 100 observations in the test set and the remaining in the training set.
+
+
+```{r}
+#install.packages("glmnet")
+```
+
+```{r}
+library(ISLR)
+library(glmnet)
+```
+
+```{r}
+data(Hitters)
+
+# Remove missing values
+Hitters = na.omit(Hitters)
+
+dim(Hitters)
+```
+
+```{r}
+set.seed(123)
+
+test_index = sample(1:nrow(Hitters), 100)
+
+test_data = Hitters[test_index, ]
+train_data = Hitters[-test_index, ]
+
+dim(train_data)
+dim(test_data)
+```
+
+```{r}
+# Create model matrices (needed for glmnet)
+x_train = model.matrix(Salary ~ ., train_data)[, -1]
+y_train = train_data$Salary
+
+x_test = model.matrix(Salary ~ ., test_data)[, -1]
+y_test = test_data$Salary
+```
+
+#### 2. We train the model using least squares and report the train MSE and test MSE.
+
+```{r}
+lm_model = lm(Salary ~ ., data = train_data)
+summary(lm_model)
+```
+
+```{r}
+# Predictions
+# Predictions
+train_pred_lm = predict(lm_model, newdata = train_data)
+test_pred_lm  = predict(lm_model, newdata = test_data)
+
+# MSE function
+mse = function(y, yhat){
+  mean((y - yhat)^2, na.rm = TRUE)
+}
+
+# Compute MSE
+train_mse_lm = mse(train_data$Salary, train_pred_lm)
+test_mse_lm  = mse(test_data$Salary, test_pred_lm)
+
+train_mse_lm
+test_mse_lm
+```
+
+#### 3.We fit ridge regression models on the training set, with grid values of λ. We report the following:
+(i) the dimension of the coefficient matrix so obtained.
+(ii) The l2 norm of the regression coefficients corresponding to the 50th and 60th choice of λ. We comment on the output.
+(iv) Test MSE corresponding to these two choices of λ.
+
+```{r}
+lambda_grid = 10^seq(10, -2, length = 100)
+
+ridge_model = glmnet(x_train, y_train, alpha = 0, lambda = lambda_grid)
+```
+
+(i) Dimension of Coefficient Matrix
+```{r}
+dim(coef(ridge_model))
+```
+
+Coefficients for 50th and 60th λ
+
+```{r}
+coef_50 = coef(ridge_model)[, 50]
+coef_60 = coef(ridge_model)[, 60]
+
+coef_50
+coef_60
+```
+
+(ii). L2 Norm of Coefficients
+
+```{r}
+l2_norm = function(beta){
+  sqrt(sum(beta^2))
+}
+
+l2_50 = l2_norm(coef_50)
+l2_60 = l2_norm(coef_60)
+
+l2_50
+l2_60
+```
+
+(iii). Test MSE for 50th and 60th λ
+
+```{r}
+# Predictions
+ridge_pred_50 = predict(ridge_model, s = lambda_grid[50], newx = x_test)
+ridge_pred_60 = predict(ridge_model, s = lambda_grid[60], newx = x_test)
+
+# Test MSE
+mse_50 = mse(y_test, ridge_pred_50)
+mse_60 = mse(y_test, ridge_pred_60)
+
+mse_50
+mse_60
+```
+
+#### Least Squares:
+
+Fits the data without shrinkage.
+
+May lead to overfitting.
+
+Reported both train MSE and test MSE.
+
+#### Ridge Regression:
+
+Shrinks coefficients toward zero using λ.
+
+Higher λ → smaller coefficients → higher bias, lower variance.
+
+Results Interpretation
+
+#### The l2 norm decreases as λ increases:
+
+The 50th λ has larger coefficients than the 60th λ.
+
+Test MSE helps decide which λ gives better generalization.
+
+#### Conclusion:
+
+ 1. Ridge regression improves model stability by reducing variance.
+
+ 2. Optimal λ is the one that minimizes test MSE.
+
+ 3. Compared to least squares, ridge often performs better on test data.
