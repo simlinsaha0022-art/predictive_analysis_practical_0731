@@ -1,0 +1,220 @@
+---
+title: "MDTS4214_Assignment_7_731"
+author: "Simlin Saha"
+date: "2026-03-25"
+output: word_document
+---
+
+### Problem Set 7: Shrinkage Methods
+
+We would be working with the Hitters dataset available in the ISLR library. We have to predict the Salary based on all available variables. First, we make sure that we delete all rows with one or more missing values.
+
+#### 1. We split the data set into a training set and a test set randomly, keeping 100 observations in the test set and the remaining in the training set.
+
+
+```{r}
+#install.packages("glmnet")
+```
+
+```{r}
+library(ISLR)
+library(glmnet)
+```
+
+```{r}
+data(Hitters)
+
+# Remove missing values
+Hitters = na.omit(Hitters)
+
+dim(Hitters)
+```
+
+```{r}
+set.seed(123)
+
+test_index = sample(1:nrow(Hitters), 100)
+
+test_data = Hitters[test_index, ]
+train_data = Hitters[-test_index, ]
+
+dim(train_data)
+dim(test_data)
+```
+
+```{r}
+# Create model matrices (needed for glmnet)
+x_train = model.matrix(Salary ~ ., train_data)[, -1]
+y_train = train_data$Salary
+
+x_test = model.matrix(Salary ~ ., test_data)[, -1]
+y_test = test_data$Salary
+```
+
+#### 2. We train the model using least squares and report the train MSE and test MSE.
+
+```{r}
+lm_model = lm(Salary ~ ., data = train_data)
+summary(lm_model)
+```
+
+```{r}
+# Predictions
+# Predictions
+train_pred_lm = predict(lm_model, newdata = train_data)
+test_pred_lm  = predict(lm_model, newdata = test_data)
+
+# MSE function
+mse = function(y, yhat){
+  mean((y - yhat)^2, na.rm = TRUE)
+}
+
+# Compute MSE
+train_mse_lm = mse(train_data$Salary, train_pred_lm)
+test_mse_lm  = mse(test_data$Salary, test_pred_lm)
+
+train_mse_lm
+test_mse_lm
+```
+
+#### 3.We fit ridge regression models on the training set, with grid values of λ. We report the following:
+(i) the dimension of the coefficient matrix so obtained.
+(ii) The l2 norm of the regression coefficients corresponding to the 50th and 60th choice of λ. We comment on the output.
+(iv) Test MSE corresponding to these two choices of λ.
+
+```{r}
+lambda_grid = 10^seq(10, -2, length = 100)
+
+ridge_model = glmnet(x_train, y_train, alpha = 0, lambda = lambda_grid)
+```
+
+(i) Dimension of Coefficient Matrix
+```{r}
+dim(coef(ridge_model))
+```
+
+Coefficients for 50th and 60th λ
+
+```{r}
+coef_50 = coef(ridge_model)[, 50]
+coef_60 = coef(ridge_model)[, 60]
+
+coef_50
+coef_60
+```
+
+(ii). L2 Norm of Coefficients
+
+```{r}
+l2_norm = function(beta){
+  sqrt(sum(beta^2))
+}
+
+l2_50 = l2_norm(coef_50)
+l2_60 = l2_norm(coef_60)
+
+l2_50
+l2_60
+```
+
+(iii). Test MSE for 50th and 60th λ
+
+```{r}
+# Predictions
+ridge_pred_50 = predict(ridge_model, s = lambda_grid[50], newx = x_test)
+ridge_pred_60 = predict(ridge_model, s = lambda_grid[60], newx = x_test)
+
+# Test MSE
+mse_50 = mse(y_test, ridge_pred_50)
+mse_60 = mse(y_test, ridge_pred_60)
+
+mse_50
+mse_60
+```
+
+#### 4. Make a line plot (for all the predictors) of the standardized coefficients against the grid value of λ chosen by you. Interpret the graph.
+
+```{r}
+ridge_mod = glmnet(x_train, y_train, alpha = 0, lambda = lambda_grid, standardize = TRUE)
+plot(ridge_mod, xvar = "lambda", label = TRUE)
+```
+
+
+```{r}
+plot(ridge_mod, xvar = "dev", label = TRUE)
+```
+
+```{r}
+plot(ridge_model, xvar = "norm", label = TRUE)
+
+```
+
+**X-axis Interpretation:**
+
+The X-axis shows the ratio $|| \hat{\beta}_{\text{ridge}} ||2 ,/, || \hat{\beta}{\text{ls}} ||_2$, which varies between 0 and 1.
+
+**At 0 (Left End):**
+
+This point corresponds to an extremely large penalty ($\lambda \to \infty$), where all coefficient estimates are shrunk completely to zero.
+
+**At 1 (Right End):**
+
+This represents the absence of regularization ($\lambda = 0$), meaning the Ridge estimates are exactly the same as the ordinary Least Squares solution.
+
+**Direction of Change:**
+
+In contrast to the earlier plot (Question 4), where increasing $\lambda$ (moving right) led to a simpler model, here the model becomes simpler as we move left toward 0, indicating stronger shrinkage.
+
+
+#### 6. Run the Ridge regression on training data by choosing λ by cross-validation. Find the test MSE for the optimal choice of λ obtained using cross validation.
+
+```{r}
+cv_ridge = cv.glmnet(x_train, y_train, alpha = 0)
+best_lambda_ridge = cv_ridge$lambda.min
+x_test = model.matrix(Salary ~ ., test_data)[, -1]
+y_test = test_data$Salary
+ridge_pred = predict(cv_ridge, s = best_lambda_ridge, newx = x_test)
+mse_ridge = mean((ridge_pred - y_test)^2)
+print(mse_ridge)
+```
+#### 7. Fit a LASSO model on the training set, with λ chosen by cross-validation. Report the test MSE, along with the number of non-zero coefficient estimates.
+```{r}
+cv_lasso = cv.glmnet(x_train, y_train, alpha = 1)
+best_lambda_lasso = cv_lasso$lambda.min
+lasso_pred = predict(cv_lasso, s = best_lambda_lasso, newx = x_test)
+mse_lasso = mean((lasso_pred - y_test)^2)
+lasso_coef = predict(cv_lasso, type = "coefficients", s = best_lambda_lasso)
+print(mse_lasso)
+print(sum(lasso_coef != 0))
+```
+#### 8. Fit an Elastic Net model on the training set, with λ1 and λ2 chosen by cross-validation. Report the test MSE. Also report the predictors with non-zero coefficients.
+
+```{r}
+
+alpha_input = 0.5 # For Elastic Net
+
+cv_enat = cv.glmnet(x_train, y_train, alpha = alpha_input)
+best_lam = cv_enat$lambda.min
+
+enat_pred = predict(cv_enat, s = best_lam, newx = x_test)
+mse_enat = mean((y_test - enat_pred)^2)
+
+enat_coef = predict(cv_enat, type = "coefficients", s = best_lam)
+enat_coef_mat = as.matrix(enat_coef)
+active_coeffs = enat_coef_mat[enat_coef_mat != 0, , drop = FALSE]
+
+print(mse_enat)
+print(active_coeffs)
+
+```
+#### 9. Compare the test MSE ’s of least squares regression, Ridge regression, LASSO and ELASTIC NET and comment on how accurately we can predict the Salary of a baseball player.
+
+In this specific run, Ridge Regression yielded the lowest Test MSE. This suggests that while there are many predictors in the Hitters dataset, most of them likely contribute some small amount of useful information to the prediction.
+
+Since Ridge shrinks coefficients but keeps all of them, it captured these collective small effects better than LASSO or Elastic Net, which may have Zeroed out potentially useful variables. Predicting a baseball player's salary remains challenging for a few key reasons: 
+
+High Variance: With an $MSE$ in the 90,000s, the average error ($RMSE \approx 303$) is roughly $303,000$. Given that many salaries fall between $100k and $1M, this is a heavy margin of error. 
+
+Non-Linearity: Salaries often follow an exponential distribution rather than a linear one. Predicting log(Salary) usually yields much more accurate results than predicting the raw value. Shrinkage Benefit: Since Ridge, LASSO, and Elastic Net outperformed standard Least Squares, it is clear that overfitting is a major issue with the Hitters dataset. 
+
+Adding the penalty parameter ($\lambda$) significantly improved the model's ability to generalize to new players.
