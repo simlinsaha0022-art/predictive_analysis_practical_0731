@@ -1,0 +1,102 @@
+---
+title: "Assignment 8"
+author: "Simlin Saha"
+date: "2026-03-31"
+output: word_document
+---
+
+## 1 Problem to demonstrate the fitting of a binary response variable using logistic regression
+
+
+**a. Consider the Weekly data available in the ISLR package of R. Use the data from 1990 to 2008 as train data and the data on 2009-2010 as test data.**
+```{r}
+library(ISLR)
+library(pROC)
+
+# a. Split the data into training and testing sets
+train_data <- subset(Weekly, Year >= 1990 & Year <= 2008)
+test_data <- subset(Weekly, Year >= 2009 & Year <= 2010)
+
+```
+The training set spans 1990 to 2008, leaving the years 2009 and 2010 to serve as unseen data to evaluate the model's true predictive power.
+
+**b. Using the training data, fit a logistic regression with Direction as the response and the five lag variables plus Volume as predictors. Are there any significant predictors? If not, which of the tests is reporting the least p value. Interpret the coefficient corresponding to that test.**
+```{r}
+# b. Fit logistic regression on training data
+fit_full <- glm(Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 + Volume, 
+                data = train_data, family = binomial)
+summary(fit_full)
+```
+**Sole Predictor:** The only statistically significant factor in predicting the market's direction is the return from the immediately preceding week (Lag1). Older trends (Lags 2-5) and trading volume do not provide meaningful predictive power.
+
+**Mean Reversion:** The relationship is inverse (negative coefficient). This means if the market went up last week, it is slightly more likely to go down this week. This suggests a short-term "mean-reverting" behavior in the stock market during the 1990–2008 training period.
+
+
+**c. Estimate the odds of market going “up” at median values of the predictors.**
+```{r}
+medians <- data.frame(
+  Lag1 = median(train_data$Lag1),
+  Lag2 = median(train_data$Lag2),
+  Lag3 = median(train_data$Lag3),
+  Lag4 = median(train_data$Lag4),
+  Lag5 = median(train_data$Lag5),
+  Volume = median(train_data$Volume)
+)
+
+prob_up <- predict(fit_full, newdata = medians, type = "response")
+odds_up <- prob_up / (1 - prob_up)
+print(paste("Estimated Odds:", odds_up))
+```
+
+At average (median) market conditions, the model predicts there is roughly a 56% chance the market will go "Up" the following week. It slightly favors a positive return over a negative one.
+
+
+**e. Using the fitted model and the predictor values from the test data, find an optimal cut point that maximize TPR(1 − FPR). Report the confusion matrix corresponding to the optimal cut-point value.From the confusion matrix compute the test error rate.**
+```{r}
+pred_test_prob <- predict(fit_full, newdata = test_data, type = "response")
+roc_test <- roc(test_data$Direction, pred_test_prob, levels = c("Down", "Up"))
+
+# Note: We MAXIMIZE TPR * (1 - FPR) to find the best threshold
+best_coords <- coords(roc_test, "best", ret = c("threshold", "specificity", "sensitivity"), best.method = "youden")
+optimal_threshold <- best_coords$threshold
+
+# Confusion matrix at optimal threshold
+pred_test_class <- ifelse(pred_test_prob >= optimal_threshold, "Up", "Down")
+conf_matrix_full <- table(Predicted = pred_test_class, Actual = test_data$Direction)
+print(conf_matrix_full)
+
+# Test error rate
+test_error_full <- 1 - sum(diag(conf_matrix_full)) / sum(conf_matrix_full)
+print(paste("Test Error Rate (Full Model):", test_error_full))
+```
+**The Breakdown:** Out of 104 total weeks, the model made 50 correct predictions (39 Down, 11 Up) but made 54 incorrect predictions. Notably, it completely missed 50 weeks where the market actually went up (predicting "Down" instead).
+
+**Worse Than Random:** The test error rate is 51.9%. Because this is higher than 50%, the model performed slightly worse than simply flipping a coin on this test set.
+
+**The Takeaway:** The model is heavily biased toward predicting "Down" (guessing Down 89 times out of 104). This poor performance strongly suggests the full model is overfitting. By including all five lags and volume, it memorized the noise of the 1990–2008 training data but completely failed to generalize to the new 2009–2010 data.
+
+**f. Is there any change in the test error rate if we have worked with only the two predictors lag 1 and lag 2?**
+```{r}
+# f. Refit with only Lag1 and Lag2
+fit_reduced <- glm(Direction ~ Lag1 + Lag2, data = train_data, family = binomial)
+pred_test_prob_red <- predict(fit_reduced, newdata = test_data, type = "response")
+
+# Using the standard 0.5 threshold for comparison, or the optimal one
+pred_test_class_red <- ifelse(pred_test_prob_red >= 0.5, "Up", "Down")
+conf_matrix_red <- table(Predicted = pred_test_class_red, Actual = test_data$Direction)
+test_error_red <- 1 - sum(diag(conf_matrix_red)) / sum(conf_matrix_red)
+print(paste("Test Error Rate (Reduced Model):", test_error_red))
+```
+**Significant Improvement:** The test error rate dropped from 51.9% (full model) to 42.3% (reduced model).
+
+**Why this happened:** By stripping away the non-significant predictors (Lags 3, 4, 5, and Volume), we removed a lot of noise. The full model was overfitting—it memorized historical quirks from 1990–2008 that didn't apply to the 2009–2010 test data.
+
+**The Takeaway:** The simpler model (using just Lag1 and Lag2) generalizes much better to unseen data, turning a model that was worse than a coin flip into one that predicts correctly about 57.7% of the time. In financial modeling, simpler is often better.
+
+
+
+
+
+
+
+
